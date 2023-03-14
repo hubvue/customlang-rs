@@ -1,49 +1,19 @@
-use std::{process::exit, str::Chars};
+use std::{collections::HashMap, str::Chars};
+mod token;
+pub use token::{Token, TokenType};
 
-#[derive(Debug)]
-pub enum TokenType {
-    Number,       // 数字
-    Identifier,   // 标识符
-    Equals,       // =
-    Semicolon,    // ;
-    Commoa,       // ,
-    Colon,        // :
-    Dot,          // .
-    OpenParen,    // (
-    CloseParen,   // )
-    OpenBrace,    // {
-    CloseBarce,   // }
-    OpenBracket,  // [
-    CloseBracket, // ]
-    BinaryOperator,
-    //keywords
-    Let,   // let
-    Const, // const
-    Fn,    // fn
-    If,    // if
-    For,   // for
-    While, // while
+lazy_static::lazy_static! {
+  static ref KEYSWORDS: HashMap<String, TokenType> = {
+    let mut keywords = HashMap::new();
+    keywords.insert("let".to_string(), TokenType::Let);
+    keywords.insert("const".to_string(), TokenType::Const);
+    keywords.insert("fn".to_string(), TokenType::Fn);
+    keywords.insert("if".to_string(), TokenType::If);
+    keywords.insert("for".to_string(), TokenType::For);
+    keywords.insert("while".to_string(), TokenType::While);
 
-    EOF, // 文件结束标识
-}
-
-#[derive(Debug)]
-pub struct Token {
-    kind: TokenType,
-    value: String,
-    start: usize,
-    end: usize,
-}
-
-impl Token {
-    pub fn new(kind: TokenType, value: impl Into<String>, start: usize, end: usize) -> Self {
-        Self {
-            kind,
-            value: value.into(),
-            start,
-            end,
-        }
-    }
+    keywords
+  };
 }
 
 pub struct Lexer<'a> {
@@ -54,11 +24,13 @@ pub struct Lexer<'a> {
 
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
-        Self {
+        let mut L = Self {
             source,
             chars: source.chars(),
-            cur_char: source.chars().next(),
-        }
+            cur_char: None,
+        };
+        L.cur_char = L.chars.next();
+        L
     }
     pub fn tokenize(&mut self) -> Vec<Token> {
         let mut tokens = Vec::new();
@@ -82,88 +54,177 @@ impl<'a> Lexer<'a> {
         None
     }
     fn next_kind(&mut self) -> Option<(TokenType, String)> {
-        while let Some(s) = self.chars.next() {
+        while let Some(c) = self.cur() {
             let kind: TokenType;
             let value: String;
-            match s {
+            match c {
                 '(' => {
                     kind = TokenType::OpenParen;
-                    value = s.to_string()
+                    value = c.to_string();
+                    self.next();
                 }
                 ')' => {
                     kind = TokenType::CloseParen;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 '[' => {
                     kind = TokenType::OpenBracket;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 ']' => {
                     kind = TokenType::CloseBracket;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 '{' => {
                     kind = TokenType::OpenBrace;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 '+' | '-' | '*' | '/' | '%' => {
                     kind = TokenType::BinaryOperator;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 '=' => {
                     kind = TokenType::Equals;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 ';' => {
                     kind = TokenType::Semicolon;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 ',' => {
                     kind = TokenType::Commoa;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 ':' => {
                     kind = TokenType::Colon;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
                 '.' => {
                     kind = TokenType::Dot;
-                    value = s.to_string();
+                    value = c.to_string();
+                    self.next();
                 }
-                // skip
-                ' ' | '\n' | '\t' | '\r' => continue,
+                ' ' | '\n' | '\t' | '\r' => {
+                    self.next();
+                    continue;
+                }
                 _ => {
-                    if self.is_number(s) {
+                    if is_number(c) {
                         let mut num = String::new();
-                        num.push(s);
-                        while let Some(s) = self.chars.next() {
-                            if self.is_number(s) {
-                                num.push(s);
+                        while let Some(c) = self.cur() {
+                            if is_number(c) {
+                                num.push(c);
+                                self.next();
                             } else {
                                 break;
                             }
                         }
                         kind = TokenType::Number;
                         value = num;
-                    } else if self.is_ident(s) {
+                    } else if is_ident(c) {
                         let mut ident = String::new();
-                        ident.push(s);
-                        // while let Some()
+                        while let Some(c) = self.cur() {
+                            if is_ident(c) {
+                                ident.push(c);
+                                self.next();
+                            } else {
+                                break;
+                            }
+                        }
+                        if let Some(&k) = KEYSWORDS.get(&ident) {
+                            kind = k;
+                        } else {
+                            kind = TokenType::Identifier;
+                        }
+                        value = ident;
+                    } else {
+                        panic!("Unreconized character found in source {}", c);
                     }
-                    panic!("Unreconized character found in source {}", s);
                 }
             };
+            println!("{:?}, {}, {:?}", kind, value, self.cur());
             return Some((kind, value));
         }
         None
     }
-    fn is_number(&self, c: char) -> bool {
-        '0' <= c && c <= '9'
-    }
-    fn is_ident(&self, c: char) -> bool {
-        !c.to_lowercase().eq(c.to_uppercase())
-    }
+
     fn offset(&self) -> usize {
         self.source.len() - self.chars.as_str().len()
+    }
+    fn cur(&self) -> Option<char> {
+        self.cur_char
+    }
+    fn next(&mut self) -> Option<char> {
+        self.cur_char = self.chars.next();
+        self.cur_char
+    }
+}
+
+fn is_number(c: char) -> bool {
+    '0' <= c && c <= '9'
+}
+
+fn is_ident(c: char) -> bool {
+    !c.to_lowercase().eq(c.to_uppercase())
+}
+
+mod test {
+    use super::{Lexer, Token, TokenType};
+    #[test]
+    fn test_let() {
+        let mut lexer = Lexer::new("let");
+        let tokens = lexer.tokenize();
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].kind, TokenType::Let);
+    }
+    #[test]
+    fn test_const() {
+        let mut lexer = Lexer::new("const");
+        let tokens = lexer.tokenize();
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].kind, TokenType::Const);
+    }
+    #[test]
+    fn test_fn() {
+        let mut lexer = Lexer::new("fn");
+        let tokens = lexer.tokenize();
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].kind, TokenType::Fn)
+    }
+    #[test]
+    fn test_if() {
+        let mut lexer = Lexer::new("if");
+        let tokens = lexer.tokenize();
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].kind, TokenType::If);
+    }
+    #[test]
+    fn test_for() {
+        let mut lexer = Lexer::new("for");
+        let tokens = lexer.tokenize();
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].kind, TokenType::For);
+    }
+    #[test]
+    fn test_while() {
+        let mut lexer = Lexer::new("while");
+        let tokens = lexer.tokenize();
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].kind, TokenType::While);
+    }
+    #[test]
+    fn test() {
+        let mut lexer = Lexer::new("let a = 10;");
+        let tokens = lexer.tokenize();
+        println!("{:?}", tokens);
     }
 }
