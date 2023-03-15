@@ -151,7 +151,6 @@ impl<'a> Lexer<'a> {
                     }
                 }
             };
-            println!("{:?}, {}, {:?}", kind, value, self.cur());
             return Some((kind, value));
         }
         None
